@@ -31,6 +31,27 @@
 
   <title>crbs</title>
   <link rel="manifest" href="manifest.json">
+  <!-- Google Maps JavaScript API: loaded dynamically from web/api_key.js -->
+  <!-- Create web/api_key.js with `window.__MAPS_API_KEY__ = 'YOUR_API_KEY';` and keep it out of source control. -->
+  <script src="api_key.js" async></script>
+  <script>
+    (function loadMaps() {
+      try {
+        var key = window.__MAPS_API_KEY__ || null;
+        if (!key) {
+          console.warn('No Maps API key found in web/api_key.js. Create web/api_key.js with window.__MAPS_API_KEY__ = "YOUR_API_KEY"');
+          return;
+        }
+        var s = document.createElement('script');
+        s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(key) + '&libraries=places';
+        s.async = true;
+        s.defer = true;
+        document.head.appendChild(s);
+      } catch (e) {
+        console.warn('Failed to load Google Maps script', e);
+      }
+    })();
+  </script>
 </head>
 <body>
   <!--

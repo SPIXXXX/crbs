@@ -1,22 +1,12 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+
+import '../services/user_role_service.dart';
+import '../widgets/drivo_auth_scaffold.dart';
+// Navigate using named routes to avoid circular imports with admin/customer pages.
 import 'signup_page.dart';
-import 'customer_page.dart';
-import 'admin_page.dart';
 
-// ── Color constants (shared across login & signup) ───────
-const kBgDark      = Color(0xFF0A1628);
-const kCard        = Color(0xFF1A2744);
-const kCardBorder  = Color(0xFF243357);
-const kBlue        = Color(0xFF2D7BF5);
-const kInputBg     = Color(0xFF162035);
-const kInputBorder = Color(0xFF253A5E);
-const kText        = Color(0xFFFFFFFF);
-const kTextMuted   = Color(0xFF7A8EAD);
-const kTextHint    = Color(0xFF4A5E7A);
-
-// ────────────────────────────────────────────────────────
-// LoginPage
-// ────────────────────────────────────────────────────────
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -24,391 +14,156 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage>
-    with SingleTickerProviderStateMixin {
-
+class _LoginPageState extends State<LoginPage> {
   final _emailCtrl = TextEditingController();
-  final _passCtrl  = TextEditingController();
+  final _passCtrl = TextEditingController();
 
-  bool _obscure = true;   // controls password visibility
-  bool _loading = false;  // controls spinner on Sign In button
-
-  late AnimationController _animCtrl;
-  late Animation<double>   _fadeIn;
-  late Animation<Offset>   _slideUp;
-
-  @override
-  void initState() {
-    super.initState();
-
-    // Set up the entrance animation (fade + slide up)
-    _animCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    );
-
-    _fadeIn = CurvedAnimation(
-      parent: _animCtrl,
-      curve: Curves.easeOut,
-    );
-
-    _slideUp = Tween<Offset>(
-      begin: const Offset(0, 0.12),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animCtrl,
-      curve: Curves.easeOutCubic,
-    ));
-
-    _animCtrl.forward(); // start animation immediately
-  }
+  bool _obscure = true;
+  bool _loading = false;
+  bool _resetLoading = false;
 
   @override
   void dispose() {
-    _animCtrl.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();
   }
 
-  // Called when the user taps Sign In
-  void _signIn() async {
-    setState(() => _loading = true);
-
-    final email    = _emailCtrl.text.trim();
+  Future<void> _signIn() async {
+    final email = _emailCtrl.text.trim();
     final password = _passCtrl.text;
 
-    // Basic empty-field validation
     if (email.isEmpty || password.isEmpty) {
-      setState(() => _loading = false);
+      _showMessage('Please enter your email and password.');
       return;
     }
 
-    // TODO: replace with real Laravel API call
-    // final response = await http.post(
-    //   Uri.parse('https://yourserver.com/api/auth/login'),
-    //   body: {'email': email, 'password': password},
-    // );
+    setState(() => _loading = true);
 
-    await Future.delayed(const Duration(milliseconds: 900));
-    setState(() => _loading = false);
+    try {
+      if (Firebase.apps.isEmpty) {
+        _showMessage(
+          'Firebase is not initialized. Please check configuration.',
+        );
+        return;
+      }
+      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
 
-    // Test credentials: admin / admin123
-    if (email == 'admin' && password == 'admin123') {
-      Navigator.pushReplacement(
+      if (!mounted) return;
+      final isAdmin = await UserRoleService.isAdmin(credential.user);
+      if (!mounted) return;
+
+      Navigator.pushNamedAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const AdminPage()),
+        isAdmin ? '/admin' : '/customer',
+        (route) => false,
       );
-    } else if (email.contains('@') && password.length >= 4) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const CustomerPage()),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Invalid credentials. Use admin/admin123 or a valid email and password (min 4 chars).'),
-        behavior: SnackBarBehavior.floating,
-      ));
+    } on FirebaseAuthException catch (error) {
+      if (mounted) _showMessage(_firebaseErrorMessage(error));
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  // Navigate to the Sign Up page
-  void _goToSignUp() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const SignupPage()),
+  Future<void> _sendPasswordReset() async {
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty) {
+      _showMessage('Enter your email first so we can send the reset link.');
+      return;
+    }
+
+    setState(() => _resetLoading = true);
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (mounted) {
+        _showMessage('Password reset email sent to $email.');
+      }
+    } on FirebaseAuthException catch (error) {
+      if (mounted) _showMessage(_firebaseErrorMessage(error));
+    } finally {
+      if (mounted) setState(() => _resetLoading = false);
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
+  String _firebaseErrorMessage(FirebaseAuthException error) {
+    switch (error.code) {
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'user-disabled':
+        return 'This account has been disabled.';
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Invalid email or password.';
+      case 'network-request-failed':
+        return 'Network error. Please check your internet connection.';
+      default:
+        return error.message ?? 'Login failed. Please try again.';
+    }
+  }
+
   @override
-  Widget build(BuildContext ctx) {
-    return Scaffold(
-      body: Stack(
+  Widget build(BuildContext context) {
+    return DrivoAuthScaffold(
+      child: DrivoAuthCard(
+        subtitle: 'Create your account and get started',
         children: [
-          // Layer 1 — background image
-          Positioned.fill(
-            child: Image.asset(
-              'assets/images/background.png',
-              fit: BoxFit.cover,
-            ),
+          DrivoInputField(
+            controller: _emailCtrl,
+            label: 'Email',
+            icon: Icons.email_outlined,
+            keyboardType: TextInputType.emailAddress,
           ),
-
-          // Layer 2 — blue wave at the bottom
-          Positioned(
-            bottom: 0, left: 0, right: 0,
-            child: CustomPaint(
-              painter: _WavePainter(),
-              size: Size(MediaQuery.of(ctx).size.width, 220),
-            ),
-          ),
-
-          // Layer 3 — centered card with entrance animation
-          Center(
-            child: FadeTransition(
-              opacity: _fadeIn,
-              child: SlideTransition(
-                position: _slideUp,
-                child: _buildCard(ctx),
+          const SizedBox(height: 34),
+          DrivoInputField(
+            controller: _passCtrl,
+            label: 'Password',
+            icon: Icons.lock_outline,
+            obscure: _obscure,
+            suffix: IconButton(
+              onPressed: () => setState(() => _obscure = !_obscure),
+              icon: Icon(
+                _obscure ? Icons.visibility_outlined : Icons.visibility_off,
+                color: kDrivoMuted,
               ),
+            ),
+          ),
+          const SizedBox(height: 42),
+          DrivoPrimaryButton(
+            label: 'Sign in',
+            loading: _loading,
+            onPressed: _signIn,
+          ),
+          const SizedBox(height: 22),
+          TextButton(
+            onPressed: _resetLoading ? null : _sendPasswordReset,
+            child: Text(_resetLoading ? 'Sending...' : 'Forgot password?'),
+          ),
+          const SizedBox(height: 42),
+          const Text(
+            'Dont have an account?',
+            style: TextStyle(color: kDrivoMuted, fontSize: 16),
+          ),
+          const SizedBox(height: 26),
+          DrivoPrimaryButton(
+            label: 'Create Account',
+            onPressed: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const SignupPage()),
             ),
           ),
         ],
       ),
     );
   }
-
-  Widget _buildCard(BuildContext ctx) {
-    final w = MediaQuery.of(ctx).size.width;
-
-    return SingleChildScrollView(
-      child: Container(
-        width: w > 500 ? 440 : w * 0.9,
-        padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 40),
-        decoration: BoxDecoration(
-          color: kCard,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: kCardBorder),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-
-            // ── Logo ──────────────────────────────────────
-            Image.asset(
-              'assets/images/ada92df8-0d6e-4565-9b2f-6814180ffafa-removebg-preview.png',
-              width: 120,
-              height: 70,
-              fit: BoxFit.contain,
-            ),
-
-            // ── App title ─────────────────────────────────
-            const Text(
-              'DRIVO',
-              style: TextStyle(
-                color: kBlue,
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2,
-              ),
-            ),
-
-            const SizedBox(height: 4),
-
-            const Text(
-              'Welcome back — sign in to continue',
-              style: TextStyle(color: kTextMuted, fontSize: 12),
-            ),
-
-            const SizedBox(height: 28),
-
-            // ── Email input ───────────────────────────────
-            DrInputField(
-              controller: _emailCtrl,
-              hint: 'you@yourmail.com',
-              icon: Icons.email_outlined,
-              keyboardType: TextInputType.emailAddress,
-            ),
-
-            const SizedBox(height: 14),
-
-            // ── Password input ────────────────────────────
-            DrInputField(
-              controller: _passCtrl,
-              hint: 'Enter your password',
-              icon: Icons.lock_outline,
-              obscure: _obscure,
-              suffix: IconButton(
-                icon: Icon(
-                  _obscure
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                  color: kTextMuted,
-                  size: 20,
-                ),
-                onPressed: () => setState(() => _obscure = !_obscure),
-              ),
-            ),
-
-            const SizedBox(height: 22),
-
-            // ── Sign In button ────────────────────────────
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _signIn,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: kBlue,
-                  disabledBackgroundColor: const Color(0xFF1E3A6E),
-                  foregroundColor: kText,
-                  shape: const StadiumBorder(),
-                  elevation: 0,
-                ),
-                child: _loading
-                    ? const SizedBox(
-                        width: 22, height: 22,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2.5,
-                        ),
-                      )
-                    : const Text(
-                        'Sign In',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-              ),
-            ),
-
-            const SizedBox(height: 14),
-
-            // ── Forgot password link ──────────────────────
-            GestureDetector(
-              onTap: () {
-                // TODO: navigate to ForgotPasswordPage
-              },
-              child: const Text(
-                'Forgot password?',
-                style: TextStyle(
-                  color: kTextMuted,
-                  fontSize: 12,
-                  decoration: TextDecoration.underline,
-                  decorationColor: kTextMuted,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 22),
-
-            // ── Divider ───────────────────────────────────
-            const Row(
-              children: [
-                Expanded(child: Divider(color: kCardBorder, thickness: 1)),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    "Don't have an account?",
-                    style: TextStyle(color: kTextHint, fontSize: 11),
-                  ),
-                ),
-                Expanded(child: Divider(color: kCardBorder, thickness: 1)),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // ── Create Account button ─────────────────────
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: OutlinedButton(
-                onPressed: _goToSignUp,
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: kBlue, width: 1.5),
-                  foregroundColor: kBlue,
-                  shape: const StadiumBorder(),
-                ),
-                child: const Text(
-                  'Create Account',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-
-          ],
-        ),
-      ),
-    );
-  }
 }
-
-// ────────────────────────────────────────────────────────
-// Shared reusable pill-shaped input field
-// Used by both LoginPage and SignupPage
-// ────────────────────────────────────────────────────────
-class DrInputField extends StatelessWidget {
-  const DrInputField({
-    super.key,
-    required this.controller,
-    required this.hint,
-    required this.icon,
-    this.obscure = false,
-    this.suffix,
-    this.keyboardType,
-    this.textCapitalization = TextCapitalization.none,
-  });
-
-  final TextEditingController controller;
-  final String hint;
-  final IconData icon;
-  final bool obscure;
-  final Widget? suffix;
-  final TextInputType? keyboardType;
-  final TextCapitalization textCapitalization;
-
-  @override
-  Widget build(BuildContext ctx) {
-    return Container(
-      height: 56,
-      decoration: BoxDecoration(
-        color: kInputBg,
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: kInputBorder),
-      ),
-      child: TextField(
-        controller: controller,
-        obscureText: obscure,
-        keyboardType: keyboardType,
-        textCapitalization: textCapitalization,
-        style: const TextStyle(color: kText, fontSize: 14),
-        decoration: InputDecoration(
-          hintText: hint,
-          hintStyle: const TextStyle(color: kTextHint, fontSize: 14),
-          border: InputBorder.none,
-          prefixIcon: Icon(icon, color: kTextMuted, size: 20),
-          suffixIcon: suffix,
-          contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 0),
-          isDense: false,
-        ),
-        cursorColor: kBlue,
-      ),
-    );
-  }
-}
-
-// ────────────────────────────────────────────────────────
-// Blue wave painter — used on both pages
-// ────────────────────────────────────────────────────────
-class WavePainter extends CustomPainter {
-  @override
-  void paint(Canvas c, Size s) {
-    final p = Paint()..color = const Color(0xFF2D7BF5);
-    final path = Path();
-
-    path.moveTo(0, s.height * .55);
-    path.quadraticBezierTo(
-      s.width * .25, s.height * .18,
-      s.width * .5,  s.height * .38,
-    );
-    path.quadraticBezierTo(
-      s.width * .75, s.height * .58,
-      s.width,       s.height * .3,
-    );
-    path.lineTo(s.width, s.height);
-    path.lineTo(0, s.height);
-    path.close();
-
-    c.drawPath(path, p);
-  }
-
-  @override
-  bool shouldRepaint(_) => false;
-}
-
-// Keep _WavePainter as an alias so existing code doesn't break
-class _WavePainter extends WavePainter {}
