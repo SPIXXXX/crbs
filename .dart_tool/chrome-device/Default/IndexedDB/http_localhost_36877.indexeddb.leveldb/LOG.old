@@ -1,0 +1,25 @@
+2026/05/20-01:48:52.729 f4b9 Reusing MANIFEST /tmp/flutter_tools.FQMPTP/flutter_tools_chrome_device.JQQFEP/Default/IndexedDB/http_localhost_36877.indexeddb.leveldb/MANIFEST-000001
+2026/05/20-01:48:52.730 f4b9 Recovering log #10
+2026/05/20-01:48:52.735 f4b9 Reusing old log /tmp/flutter_tools.FQMPTP/flutter_tools_chrome_device.JQQFEP/Default/IndexedDB/http_localhost_36877.indexeddb.leveldb/000010.log 
+2026/05/20-01:48:52.747 f4bc Level-0 table #16: started
+2026/05/20-01:48:52.747 f4bc Level-0 table #16: 3574 bytes OK
+2026/05/20-01:48:52.748 f4bc Delete type=0 #10
+2026/05/20-01:48:52.749 f4bc Manual compaction at level-0 from '\x00\x06\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x07\x00\x00\x00' @ 0 : 0; will stop at (end)
+2026/05/20-01:50:14.349 f4ba Compacting 1@1 + 1@2 files
+2026/05/20-01:50:14.355 f4ba Generated table #17@1: 40 keys, 3211 bytes
+2026/05/20-01:50:14.356 f4ba Compacted 1@1 + 1@2 files => 3211 bytes
+2026/05/20-01:50:14.357 f4ba compacted to: files[ 0 0 1 0 0 0 0 ]
+2026/05/20-01:50:14.357 f4ba Delete type=2 #13
+2026/05/20-01:50:14.357 f4ba Delete type=2 #16
+2026/05/20-01:57:22.485 f4ba Level-0 table #19: started
+2026/05/20-01:57:22.486 f4ba Level-0 table #19: 3097 bytes OK
+2026/05/20-01:57:22.487 f4ba Delete type=0 #15
+2026/05/20-01:57:22.488 f4ba Manual compaction at level-0 from (begin) .. (end); will stop at (end)
+2026/05/20-01:57:22.488 f4ba Manual compaction at level-1 from (begin) .. (end); will stop at '\x00\x02\x01\x02\x01C\x00f\x00i\x00r\x00e\x00b\x00a\x00s\x00e\x00:\x00a\x00u\x00t\x00h\x00U\x00s\x00e\x00r\x00:\x00A\x00I\x00z\x00a\x00S\x00y\x00A\x007\x00O\x006\x004\x00Y\x00C\x00o\x00S\x00G\x00h\x008\x00m\x00l\x00C\x00R\x00g\x00J\x00f\x00Y\x007\x00r\x00s\x003\x00f\x00q\x00T\x00y\x00R\x00y\x00w\x00O\x00M\x00:\x00[\x00D\x00E\x00F\x00A\x00U\x00L\x00T\x00]' @ 281 : 1
+2026/05/20-01:57:22.488 f4ba Compacting 1@1 + 1@2 files
+2026/05/20-01:57:22.489 f4ba Generated table #20@1: 36 keys, 3076 bytes
+2026/05/20-01:57:22.489 f4ba Compacted 1@1 + 1@2 files => 3076 bytes
+2026/05/20-01:57:22.490 f4ba compacted to: files[ 0 0 1 0 0 0 0 ]
+2026/05/20-01:57:22.490 f4ba Delete type=2 #19
+2026/05/20-01:57:22.490 f4ba Delete type=2 #17
+2026/05/20-01:57:22.490 f4ba Manual compaction at level-1 from '\x00\x02\x01\x02\x01C\x00f\x00i\x00r\x00e\x00b\x00a\x00s\x00e\x00:\x00a\x00u\x00t\x00h\x00U\x00s\x00e\x00r\x00:\x00A\x00I\x00z\x00a\x00S\x00y\x00A\x007\x00O\x006\x004\x00Y\x00C\x00o\x00S\x00G\x00h\x008\x00m\x00l\x00C\x00R\x00g\x00J\x00f\x00Y\x007\x00r\x00s\x003\x00f\x00q\x00T\x00y\x00R\x00y\x00w\x00O\x00M\x00:\x00[\x00D\x00E\x00F\x00A\x00U\x00L\x00T\x00]' @ 281 : 1 .. (end); will stop at (end)
