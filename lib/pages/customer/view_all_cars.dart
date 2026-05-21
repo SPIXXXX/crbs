@@ -1604,6 +1604,8 @@ class _CurrentRentalsPageState extends State<_CurrentRentalsPage> {
   @override
   void initState() {
     super.initState();
+    // No orderBy here — combining whereIn + orderBy on a different field
+    // requires a Firestore composite index. We sort in memory instead.
     _stream = FirebaseFirestore.instance
         .collection('bookings')
         .where('customerId', isEqualTo: widget.userId)
@@ -1616,9 +1618,10 @@ class _CurrentRentalsPageState extends State<_CurrentRentalsPage> {
             'confirmed',
             'Active',
             'active',
+            'Return Requested',
+            'return requested',
           ],
         )
-        .orderBy('pickupDate', descending: false)
         .snapshots();
   }
 
@@ -1650,11 +1653,31 @@ class _CurrentRentalsPageState extends State<_CurrentRentalsPage> {
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: _stream,
         builder: (context, snap) {
+          if (snap.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Error: \${snap.error}',
+                  style: const TextStyle(color: _red),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
           if (snap.connectionState == ConnectionState.waiting &&
               !snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          final docs = snap.data?.docs ?? const [];
+          final docs = (snap.data?.docs ?? const []).toList()
+            ..sort((a, b) {
+              final aDate = a.data()['pickupDate'];
+              final bDate = b.data()['pickupDate'];
+              if (aDate is Timestamp && bDate is Timestamp) {
+                return aDate.compareTo(bDate);
+              }
+              return 0;
+            });
           if (docs.isEmpty) {
             return Center(
               child: Column(
@@ -1682,6 +1705,7 @@ class _CurrentRentalsPageState extends State<_CurrentRentalsPage> {
               final d = docs[i].data();
               final name = (d['vehicleName'] as String?) ?? 'Rental Car';
               final imageUrl = (d['imageUrl'] as String?) ?? '';
+              final vehicleId = (d['vehicleId'] as String?) ?? '';
               final status = (d['status'] as String?) ?? '—';
               final pickup = d['pickupDate'] is Timestamp
                   ? (d['pickupDate'] as Timestamp).toDate()
@@ -1699,7 +1723,22 @@ class _CurrentRentalsPageState extends State<_CurrentRentalsPage> {
               final feeLabel = totalFee != null
                   ? _money((totalFee as num).toInt())
                   : '—';
-              final isActive = status.toLowerCase() == 'active';
+              final statusLow = status.toLowerCase();
+              final isActive = statusLow == 'active';
+              final isReturnRequested = statusLow == 'return requested';
+              final Color statusBadgeBg = isReturnRequested
+                  ? const Color(0xFFEDE9FE)
+                  : isActive
+                  ? const Color(0xFFDCFCE7)
+                  : const Color(0xFFEFF6FF);
+              final Color statusBadgeFg = isReturnRequested
+                  ? const Color(0xFF7C3AED)
+                  : isActive
+                  ? const Color(0xFF16A34A)
+                  : _blue;
+              final canRequestReturn =
+                  statusLow == 'confirmed' || statusLow == 'active';
+              final bookingDocId = docs[i].id;
 
               return Card(
                 elevation: 0,
@@ -1709,86 +1748,179 @@ class _CurrentRentalsPageState extends State<_CurrentRentalsPage> {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
-                  child: Row(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: SizedBox(
-                          width: 100,
-                          height: 68,
-                          child: imageUrl.isNotEmpty
-                              ? Image.network(
-                                  imageUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) =>
-                                      const _CarIcon(),
-                                )
-                              : const _CarIcon(),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: SizedBox(
+                              width: 100,
+                              height: 68,
+                              child: _BookingImage(
+                                imageUrl: imageUrl,
+                                vehicleId: vehicleId,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    name,
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w800,
-                                      color: _text,
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        name,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w800,
+                                          color: _text,
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: statusBadgeBg,
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        status,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: statusBadgeFg,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: isActive
-                                        ? const Color(0xFFDCFCE7)
-                                        : const Color(0xFFEFF6FF),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    status,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      color: isActive
-                                          ? const Color(0xFF16A34A)
-                                          : _blue,
-                                    ),
-                                  ),
+                                const SizedBox(height: 6),
+                                _InfoRow(
+                                  icon: Icons.calendar_today_outlined,
+                                  label: 'Pickup',
+                                  value: pickupLabel,
+                                ),
+                                const SizedBox(height: 3),
+                                _InfoRow(
+                                  icon: Icons.event_available_outlined,
+                                  label: 'Return',
+                                  value: returnLabel,
+                                ),
+                                const SizedBox(height: 3),
+                                _InfoRow(
+                                  icon: Icons.payments_outlined,
+                                  label: 'Total',
+                                  value: feeLabel,
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 6),
-                            _InfoRow(
-                              icon: Icons.calendar_today_outlined,
-                              label: 'Pickup',
-                              value: pickupLabel,
-                            ),
-                            const SizedBox(height: 3),
-                            _InfoRow(
-                              icon: Icons.event_available_outlined,
-                              label: 'Return',
-                              value: returnLabel,
-                            ),
-                            const SizedBox(height: 3),
-                            _InfoRow(
-                              icon: Icons.payments_outlined,
-                              label: 'Total',
-                              value: feeLabel,
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
+                      if (canRequestReturn) ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final ok = await showDialog<bool>(
+                                context: ctx,
+                                builder: (dialogCtx) => AlertDialog(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  title: const Text('Request Return'),
+                                  content: const Text(
+                                    'Are you sure you want to return this car? The admin will confirm the return.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.of(dialogCtx).pop(false),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () =>
+                                          Navigator.of(dialogCtx).pop(true),
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: _blue,
+                                      ),
+                                      child: const Text('Yes, Return'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (ok != true) return;
+                              try {
+                                await FirebaseFirestore.instance
+                                    .collection('bookings')
+                                    .doc(bookingDocId)
+                                    .update({
+                                      'status': 'Return Requested',
+                                      'returnRequestedAt':
+                                          FieldValue.serverTimestamp(),
+                                    });
+                              } catch (_) {
+                                if (ctx.mounted) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Failed to request return. Try again.',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                            icon: const Icon(Icons.assignment_return_outlined),
+                            label: const Text('Request Return'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: _blue,
+                              side: const BorderSide(color: _blue),
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (isReturnRequested) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEDE9FE),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(
+                                Icons.hourglass_top_rounded,
+                                size: 16,
+                                color: Color(0xFF7C3AED),
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Waiting for admin to confirm return…',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF7C3AED),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -1820,6 +1952,7 @@ class _RentalHistoryPageState extends State<_RentalHistoryPage> {
     'pending': Color(0xFFD97706),
     'confirmed': _blue,
     'active': Color(0xFF16A34A),
+    'return requested': Color(0xFF7C3AED),
   };
 
   static const _statusBg = <String, Color>{
@@ -1828,15 +1961,16 @@ class _RentalHistoryPageState extends State<_RentalHistoryPage> {
     'pending': Color(0xFFFEF9C3),
     'confirmed': Color(0xFFEFF6FF),
     'active': Color(0xFFDCFCE7),
+    'return requested': Color(0xFFEDE9FE),
   };
 
   @override
   void initState() {
     super.initState();
+    // orderBy alone on a non-indexed field can fail; sort in memory instead.
     _stream = FirebaseFirestore.instance
         .collection('bookings')
         .where('customerId', isEqualTo: widget.userId)
-        .orderBy('createdAt', descending: true)
         .snapshots();
   }
 
@@ -1868,11 +2002,32 @@ class _RentalHistoryPageState extends State<_RentalHistoryPage> {
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: _stream,
         builder: (context, snap) {
+          if (snap.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Error: ${snap.error}',
+                  style: const TextStyle(color: _red),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
           if (snap.connectionState == ConnectionState.waiting &&
               !snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          final docs = snap.data?.docs ?? const [];
+          // Sort by createdAt descending in memory
+          final docs = (snap.data?.docs ?? const []).toList()
+            ..sort((a, b) {
+              final aTs = a.data()['createdAt'];
+              final bTs = b.data()['createdAt'];
+              if (aTs is Timestamp && bTs is Timestamp) {
+                return bTs.compareTo(aTs);
+              }
+              return 0;
+            });
           if (docs.isEmpty) {
             return Center(
               child: Column(
@@ -1900,6 +2055,7 @@ class _RentalHistoryPageState extends State<_RentalHistoryPage> {
               final d = docs[i].data();
               final name = (d['vehicleName'] as String?) ?? 'Rental Car';
               final imageUrl = (d['imageUrl'] as String?) ?? '';
+              final vehicleId = (d['vehicleId'] as String?) ?? '';
               final status = (d['status'] as String?) ?? '—';
               final statusKey = status.toLowerCase();
               final statusColor = _statusColors[statusKey] ?? _muted;
@@ -1944,14 +2100,10 @@ class _RentalHistoryPageState extends State<_RentalHistoryPage> {
                         child: SizedBox(
                           width: 100,
                           height: 68,
-                          child: imageUrl.isNotEmpty
-                              ? Image.network(
-                                  imageUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) =>
-                                      const _CarIcon(),
-                                )
-                              : const _CarIcon(),
+                          child: _BookingImage(
+                            imageUrl: imageUrl,
+                            vehicleId: vehicleId,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 14),
@@ -2041,6 +2193,116 @@ class _CarIcon extends StatelessWidget {
       child: const Center(
         child: Icon(Icons.directions_car_outlined, color: _muted, size: 32),
       ),
+    );
+  }
+}
+
+/// Shows the car image for a booking.
+/// Uses [imageUrl] if non-empty; otherwise fetches from the vehicles collection
+/// via [vehicleId] — so old bookings without a stored imageUrl still show the image.
+class _BookingImage extends StatefulWidget {
+  const _BookingImage({required this.imageUrl, required this.vehicleId});
+
+  final String imageUrl;
+  final String vehicleId;
+
+  @override
+  State<_BookingImage> createState() => _BookingImageState();
+}
+
+class _BookingImageState extends State<_BookingImage> {
+  String? _resolvedUrl;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(_BookingImage old) {
+    super.didUpdateWidget(old);
+    if (old.imageUrl != widget.imageUrl || old.vehicleId != widget.vehicleId) {
+      _resolve();
+    }
+  }
+
+  Future<void> _resolve() async {
+    // Fast path: booking already has the URL stored
+    if (widget.imageUrl.isNotEmpty) {
+      if (mounted)
+        setState(() {
+          _resolvedUrl = widget.imageUrl;
+          _loading = false;
+        });
+      return;
+    }
+    // Slow path: fetch from the vehicles collection
+    if (widget.vehicleId.isEmpty) {
+      if (mounted)
+        setState(() {
+          _resolvedUrl = null;
+          _loading = false;
+        });
+      return;
+    }
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('vehicles')
+          .doc(widget.vehicleId)
+          .get();
+      final url = (snap.data()?['imageUrl'] as String?) ?? '';
+      if (mounted)
+        setState(() {
+          _resolvedUrl = url.isEmpty ? null : url;
+          _loading = false;
+        });
+    } catch (_) {
+      if (mounted)
+        setState(() {
+          _resolvedUrl = null;
+          _loading = false;
+        });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Container(
+        color: const Color(0xFFF1F5F9),
+        child: const Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2, color: _muted),
+          ),
+        ),
+      );
+    }
+    if (_resolvedUrl == null || _resolvedUrl!.isEmpty) {
+      return const _CarIcon();
+    }
+    return Image.network(
+      _resolvedUrl!,
+      fit: BoxFit.cover,
+      loadingBuilder: (_, child, progress) => progress == null
+          ? child
+          : Container(
+              color: const Color(0xFFF1F5F9),
+              child: const Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: _muted,
+                  ),
+                ),
+              ),
+            ),
+      errorBuilder: (_, __, ___) => const _CarIcon(),
     );
   }
 }

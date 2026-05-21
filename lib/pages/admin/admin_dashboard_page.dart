@@ -571,6 +571,8 @@ class _RentalDetailCard extends StatelessWidget {
       case 'confirmed':
       case 'active':
         return const Color(0xFF17A34A);
+      case 'return requested':
+        return const Color(0xFF7C3AED);
       case 'completed':
         return _blue;
       case 'cancelled':
@@ -811,15 +813,13 @@ class _DetailCardContent extends StatelessWidget {
           const SizedBox(height: 12),
         ],
 
-        if (onReturn != null &&
-            (status.toLowerCase() == 'confirmed' ||
-                status.toLowerCase() == 'active')) ...[
+        if (onReturn != null && status.toLowerCase() == 'return requested') ...[
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton(
               onPressed: onReturn,
-              style: FilledButton.styleFrom(backgroundColor: _darkBlue),
-              child: const Text('Mark Returned'),
+              style: FilledButton.styleFrom(backgroundColor: Color(0xFF16A34A)),
+              child: const Text('Confirm Return'),
             ),
           ),
           const SizedBox(height: 12),
@@ -1395,6 +1395,8 @@ class _TransactionRowState extends State<_TransactionRow> {
       case 'confirmed':
       case 'active':
         return const Color(0xFF17A34A);
+      case 'return requested':
+        return const Color(0xFF7C3AED);
       case 'completed':
         return _blue;
       case 'cancelled':
